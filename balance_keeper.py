@@ -9,6 +9,7 @@ import talib
 
 from keys import *
 from colors import *
+from logger import import *
 
 #from datetime import datetime
 
@@ -17,35 +18,6 @@ import matplotlib.animation as animation
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-
-
-# duplication of print logging into file
-import sys
-
-class Tee(object):
-    def __init__(self, name, mode):
-        self.file = open(name, mode)
-        self.stdout = sys.stdout
-
-    def __del__(self):
-        self.close()
-
-    def write(self, data):
-        self.stdout.write(time.asctime(time.gmtime(time.time())) + ': ' + data)
-        self.file.write(data)
-
-    def flush(self):
-        self.stdout.flush()
-        self.file.flush()
-
-    def close(self):
-        if sys.stdout is self:
-            sys.stdout = self.stdout
-        self.file.close()
-
-sys.stdout = Tee('balance_keeper_log.txt', 'a')
-
-
 
 ORDER_LIFE_TIME = 0.5 * 60
 
