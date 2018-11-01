@@ -9,17 +9,10 @@ import talib
 
 from keys import *
 from colors import *
-from logger import import *
+from logger import *
+from timeframe import *
 
 #from datetime import datetime
-
-from mpl_finance import candlestick2_ohlc
-import matplotlib.animation as animation
-
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-
-ORDER_LIFE_TIME = 0.5 * 60
 
 API_URL = 'bittrex.com'
 API_VERSION = 'v1.1'
@@ -36,13 +29,10 @@ TEN_SATOSHI = ONE_SATOSHI * 10
 MIN_VALUE_50K_SAT = ONE_SATOSHI * 50000
 MIN_TRADE_ALLOWED = MIN_VALUE_50K_SAT
 
+MIN_COMPETITOR_ORDER_VOLUME = 0.007
 ROUND_PRECISION = 4
 
 MACD_ADVICE_UPDATE_TIME = 1 * 60
-
-MACD_SELL_MIN_LEVEL = 0.005
-MACD_BUY_MAX_LEVEL = -0.005
-
 
 ORDER_TYPE = 'limit'
 
@@ -100,38 +90,6 @@ def call_api(**kwargs):
         return obj
     except json.decoder.JSONDecodeError:
         raise ScriptError('Request failed', response)
-    
-
-def get_timeframe_seconds(timeframe, multiplier=1):
-    timeframe_seconds = 60
-    if timeframe == 'day':
-        timeframe_seconds *= 24 * 60 * multiplier
-    elif timeframe == 'hour':
-        timeframe_seconds *= 60 * multiplier
-    elif timeframe == 'thirtyMin':
-        timeframe_seconds *= 30
-    elif timeframe == 'fiveMin':
-        timeframe_seconds *= 5
-
-    return timeframe_seconds
-
-def get_time_from_str(timestr):
-    try:
-        t = time.strptime(timestr, "%Y-%m-%dT%H:%M:%S.%f")
-    except ValueError:
-        t = time.strptime(timestr, '%Y-%m-%dT%H:%M:%S')
-    return int(time.mktime(t))
-
-def get_timestamp(timestr):
-    return int(get_time_from_str(timestr))
-
-def get_current_timeframe(timeframe):
-    seconds = get_timeframe_seconds(timeframe)
-    return numpy.ceil(time.mktime(time.gmtime(time.time())) / seconds) * seconds
-
-def get_timeframe_from_str(timestr, timeframe):
-    seconds = get_timeframe_seconds(timeframe)
-    return int(numpy.ceil(get_time_from_str(timestr) / seconds) * seconds)
 
 
 def pull_historical_data(market, timeframe='hour'):
@@ -221,7 +179,6 @@ def pull_historical_data(market, timeframe='hour'):
 
 # get the trade history data
 def get_ticks(market, timeframe='hour'):
-    print('get_ticks')
     pull_historical_data(market, timeframe)
     return chart_data[market]
 
@@ -234,9 +191,7 @@ def get_macd_advice(chart_data):
     last_cross = numpy.argwhere(numpy.diff(numpy.sign(macdhist))).reshape(-1)[-1]
     print('macd: \t', macd[-1], '\tmacdsignal:', macdsignal[-1], '\tmacd_hist:', macdhist[-1])
     print('      \t', macd[last_cross], '\t           ', macdsignal[last_cross], '\t          ', macdhist[last_cross])
-    #last_two_crosses = numpy.argwhere(numpy.diff(numpy.sign(macdhist))).reshape(-1)[-2:]
-    #prev_abs_max_macdh = get_prev_abs_max(macdhist[last_two_crosses[0]:last_two_crosses[1]])
-    
+
     #TODO: analyze macd and macdsignal zero cross
     #TODO: analyze time of average price around one value
     #TODO: analyze last candle bull/bear and do not sell/buy accordingly
@@ -249,63 +204,6 @@ def get_macd_advice(chart_data):
         else:
             #if macdsignal[-1] < macdsignal[-2] and macd[-1] < macd[-2]:
             advise = 'sell'
-
-
-    #if macdhist.size - last_cross < MAX_CANDLES_BEFORE_ADVICE_WAIT:  # this is for first buy/sell
-
-
-    # #trend = 'BULL' if macd[-1] > macdsignal[-1] else 'BEAR'
-    #
-    # make_order = False
-    #
-    # # the last trand change
-    # #last_cross = numpy.argwhere(numpy.diff(numpy.sign(macdhist))).reshape(-1)
-    #
-    # # the simplest algorithm is to buy/sell on cross
-    #
-    #
-    # make_order = False
-    # max_abs_macdh = 0.0
-    # local_max_abs_macdh = 0.0
-    # prev_macdh = 0.0
-    #
-    # # check only candles passed after last macd and macds cross
-    # for offset, macdh in enumerate(macdhist[last_cross:]):
-    #     print(macdh)
-    #     if macdh < 0:
-    #         advise = 'buy'
-    #     else:
-    #         advise = 'sell'
-    #
-    #
-    #
-    #     # this is try to catch the trend reverse but it might be too early
-    #     if abs(macdh) >= abs(max_abs_macdh):
-    #         max_abs_macdh = macdh
-    #         trend_changing = 0
-    #     elif abs(macdh) >= abs(prev_macdh):
-    #         trend_changing = 0
-    #     else:
-    #         trend_changing += 1
-    #
-    #     prev_macdh = macdh
-    #
-    #     if trend_changing >= NUM_OF_CHANGING_MACDH_CANDLES_TO_MAKE_ORDER:
-    #         # additional check for % of maximum value
-    #         perc = (macdh / max_abs_macdh) * 100
-    #         if (macdh > 0 and perc > BULL_PERC) or (macdh < 0 and perc < (100 - BEAR_PERC)):
-    #             make_order = True
-    #         make_order = True
-    #         print('macdhist is changing %d periods' % changing)
-    #
-    #
-    # if trend == 'BEAR' and make_order:
-    #     advise = 'buy'
-    # elif trend == 'BEAR' or (trend == 'BULL' and make_order):
-    #     advise = 'wait'
-    # elif sell_time:
-    #     advise = 'sell'
-
     return advise
 
 
@@ -325,6 +223,7 @@ def update_macd_advices():
 def cancel_order(uuid, order_type=''):
     cancel_res = call_api(method="/market/cancel", uuid=uuid)
     if cancel_res['success']:
+        global g_open_orders
         g_open_orders -= 1
         print(CGREEN, "\t\t%s order %s successfully canceled%s" % (order_type, uuid, CEND))
     else:
@@ -338,9 +237,9 @@ def get_rate(market, order_type):
     # 2. current ticker value +/- some little amount to be best advise
     # 3. ticker value 'last' 
     ticker_data = call_api(method="/public/getticker", market=market)
-    adjuster = (ticker_data['result']['Ask'] - ticker_data['result']['Bid']) / 100
-    if adjuster < ONE_SATOSHI:
-        adjuster = ONE_SATOSHI    
+    #adjuster = (ticker_data['result']['Ask'] - ticker_data['result']['Bid']) / 100
+    #if adjuster < ONE_SATOSHI:
+    adjuster = ONE_SATOSHI    
 
     if order_type.lower() == 'sell':
         rate = float(ticker_data['result']['Ask'] - adjuster)
@@ -355,9 +254,10 @@ def create_order(order_type, market, quantity, rate=None):
     rate = get_rate(market, order_type) if rate == None else rate
     responce = call_api(method=method, market=market, quantity=quantity, rate=rate)
     if responce['success']:
+        global g_open_orders
+        g_open_orders += 1        
         print(CGREEN, "\t\t\tsuccessfyly created %s order for %s, rate: %0.8f, quantity %0.8f uuid=%s%s"
-            % (order_type.upper(), market, rate, quantity, responce['OrderUuid'], CEND))
-        g_open_orders += 1
+            % (order_type.upper(), market, rate, quantity, responce['result']['uuid'], CEND))
     else:
         print(CRED, "\t\t\tfailed to create %s order: %s%s" % (order_type.upper(), responce['message'], CEND))
 
@@ -399,15 +299,21 @@ def create_sell(market, quantity=0):
         
 
 def is_rate_changed(order):
-    current_rate = 0
-    ticker_data = call_api(method="/public/getticker", market=order['Exchange'])
-    if ticker_data['success']:
-        if order["OrderType"].lower().split('_')[-1] == 'sell':
-            current_rate = ticker_data['result']['Ask']  
-        else:
-            current_rate = ticker_data['result']['Bid']
-            
-    return False if current_rate == order['Price'] else True
+    order_type = order["OrderType"].lower().split('_')[-1]
+    # check competitor order validity
+    order_book = call_api(method="/public/getorderbook", market=order['Exchange'], type=order_type)
+    if order_book['success']:
+        for competitor in order_book:
+            if competitor['Rate'] != order['Price']:
+                # TODO: ckeck if MIN_COMPETITOR_ORDER_VOLUME is suitable for altcoins
+                if competitor['Quantity'] >= MIN_COMPETITOR_ORDER_VOLUME:
+                    return True
+            else:
+                return False
+    else:
+        print('failed to get order book data')
+        
+    return False
                 
 
 def adjust_open_orders(create_new=True):
@@ -418,6 +324,7 @@ def adjust_open_orders(create_new=True):
     ''')
     orders = call_api(method='/market/getopenorders')
     if orders['success']:
+        global g_open_orders
         g_open_orders = len(orders['result'])
         print('\tOpen orders:', g_open_orders)
         for order in orders['result']:
@@ -445,7 +352,6 @@ def stop_loss_protection():
             last_order = closed_orders['result'][0]
             order_type = last_order["OrderType"].lower().split('_')[-1]
             get_rate(market, order_type)
-            if last_order[]
                 
     # if current price gets lower/higher of the closed order price + fee then close position if funds available
 
@@ -508,8 +414,6 @@ def make_balances():
 ############################################################################################
 numpy.seterr(all='ignore')
 
-#fig, ax = plt.subplots(1, sharex=True)
-#plt.suptitle(TRUSTED_MARKETS[0])
 
 # print all available markets
 markets = call_api(method='/public/getmarkets')
@@ -526,11 +430,6 @@ start = True
 # sync start time with the chart data update intervals
 start_time = int(numpy.ceil(time.time() / MACD_ADVICE_UPDATE_TIME)) * MACD_ADVICE_UPDATE_TIME
 
-#check_strategy_profit(get_ticks('USDT-BTC'))
-# main function
-#ani = animation.FuncAnimation(fig, update_data, interval=5000)
-#plt.show()
-
 while True:
     try:
         # 0. cancel all open orders since they are most likely not actual anymore
@@ -546,10 +445,12 @@ while True:
             start_time = current_time
             update_macd_advices()
             # 3. check balances and sell if advised
-            manage_balances()
+            if 'sell' in macd_advices.values():
+                manage_balances()
             # 4. find the good currency to buy if there is available USDT or BTC balances
             #    the maximum amount to by is some % of overall balance TBD.
-            make_balances()
+            if 'buy' in macd_advices.values():
+                make_balances()
 
         start = False
         if g_open_orders:
