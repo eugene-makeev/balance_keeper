@@ -28,7 +28,7 @@ DEBUG_PRICE_RATE = 1.0
 
 TRADE_HISTORY_SIZE_DAYS = 10
 
-MACD_HIST_ZERO_DRIFT_THRESHOLD = 2.0
+MACD_HIST_ZERO_DRIFT_THRESHOLD = 1.0
 
 ONE_SATOSHI = 0.00000001
 FIVE_SATOSHI = ONE_SATOSHI * 5
@@ -145,6 +145,8 @@ def pull_historical_data(market, timeframe='hour'):
     # "oneMin", "fiveMin", "thirtyMin", "hour" and "day"
     get_ticks_url = "https://bittrex.com/Api/v2.0/pub/market/GetTicks?marketName=" + market + "&tickInterval="
   
+    print('pull_historical_data')
+  
     if market not in chart_data:
         chart_data[market] = {}
 #        # pull data for closed timeframes
@@ -219,6 +221,7 @@ def pull_historical_data(market, timeframe='hour'):
 
 # get the trade history data
 def get_ticks(market, timeframe='hour'):
+    print('get_ticks')
     pull_historical_data(market, timeframe)
     return chart_data[market]
 
@@ -316,16 +319,16 @@ def update_macd_advices():
         if market in markets_supported:
             macd_advices[market] = get_macd_advice(get_ticks(market))
         else:
-            print('invalid market in trusted markets: %s' % market)
+            print(CRED, 'invalid market in trusted markets:', market, CEND)
     print('   ', macd_advices)
 
-def cancel_order(uuid, type=''):
+def cancel_order(uuid, order_type=''):
     cancel_res = call_api(method="/market/cancel", uuid=uuid)
     if cancel_res['success']:
         g_open_orders -= 1
-        print(CGREEN, "\t\t%s order %s successfully canceled%s" % (type, uuid, CEND))
+        print(CGREEN, "\t\t%s order %s successfully canceled%s" % (order_type, uuid, CEND))
     else:
-        print(CRED, "\t\t%s order %s cancelation failed (%s)%s" % (type, uuid, cancel_res['message'], CEND))    
+        print(CRED, "\t\t%s order %s cancelation failed (%s)%s" % (order_type, uuid, cancel_res['message'], CEND))    
     return cancel_res['success']
 
 def get_rate(market, order_type):
@@ -339,7 +342,7 @@ def get_rate(market, order_type):
     if adjuster < ONE_SATOSHI:
         adjuster = ONE_SATOSHI    
 
-    if order_type.lower() == 'sell'
+    if order_type.lower() == 'sell':
         rate = float(ticker_data['result']['Ask'] - adjuster)
     else:
         rate = float(ticker_data['result']['Bid'] + adjuster)
@@ -349,7 +352,7 @@ def get_rate(market, order_type):
 
 def create_order(order_type, market, quantity, rate=None):
     method = "/market/" + order_type.lower() + ORDER_TYPE
-    rate = get_rate(market, order_type) if rate == None
+    rate = get_rate(market, order_type) if rate == None else rate
     responce = call_api(method=method, market=market, quantity=quantity, rate=rate)
     if responce['success']:
         print(CGREEN, "\t\t\tsuccessfyly created %s order for %s, rate: %0.8f, quantity %0.8f uuid=%s%s"
@@ -440,7 +443,7 @@ def stop_loss_protection():
         closed_orders = call_api(method='/market/getorderhistory&market=' + market)
         if closed_orders['success']:
             last_order = closed_orders['result'][0]
-            order_type = order["OrderType"].lower().split('_')[-1]
+            order_type = last_order["OrderType"].lower().split('_')[-1]
             get_rate(market, order_type)
             if last_order[]
                 
@@ -505,8 +508,8 @@ def make_balances():
 ############################################################################################
 numpy.seterr(all='ignore')
 
-fig, ax = plt.subplots(1, sharex=True)
-plt.suptitle(TRUSTED_MARKETS[0])
+#fig, ax = plt.subplots(1, sharex=True)
+#plt.suptitle(TRUSTED_MARKETS[0])
 
 # print all available markets
 markets = call_api(method='/public/getmarkets')
