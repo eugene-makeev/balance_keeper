@@ -8,6 +8,8 @@ UNIX_NEWLINE = '\n'
 WINDOWS_NEWLINE = '\r\n'
 MAC_NEWLINE = '\r'
 
+g_new_line = True
+
 class Tee(object):
     def __init__(self, name, mode):
         self.file = open(name, mode)
@@ -17,10 +19,15 @@ class Tee(object):
         self.close()
 
     def write(self, data):
-        if data != UNIX_NEWLINE and data != WINDOWS_NEWLINE and data != MAC_NEWLINE:
+        global g_new_line
+        append_time = ''
+        # print once on new line
+        if data == UNIX_NEWLINE or data == WINDOWS_NEWLINE or data == MAC_NEWLINE:
+            g_new_line = True
+        elif g_new_line:
             append_time = 'GMT ' + time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(time.time())) + ': '
-        else:
-            append_time = ''
+            g_new_line = False
+
         self.stdout.write(append_time + data)
         # TODO: optimize remove coloring
         for color in COLORS:

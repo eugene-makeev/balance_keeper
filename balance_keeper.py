@@ -304,6 +304,7 @@ def is_rate_changed(order):
     order_book = call_api(method="/public/getorderbook", market=order['Exchange'], type=order_type)
     if order_book['success']:
         for competitor in order_book['result']:
+            print("competitor:", competitor)
             if competitor['Rate'] != order['Price']:
                 # TODO: ckeck if MIN_COMPETITOR_ORDER_VOLUME is suitable for altcoins
                 if competitor['Quantity'] >= MIN_COMPETITOR_ORDER_VOLUME:
