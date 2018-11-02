@@ -303,7 +303,7 @@ def is_rate_changed(order):
     # check competitor order validity
     order_book = call_api(method="/public/getorderbook", market=order['Exchange'], type=order_type)
     if order_book['success']:
-        for competitor in order_book:
+        for competitor in order_book['result']:
             if competitor['Rate'] != order['Price']:
                 # TODO: ckeck if MIN_COMPETITOR_ORDER_VOLUME is suitable for altcoins
                 if competitor['Quantity'] >= MIN_COMPETITOR_ORDER_VOLUME:
@@ -435,8 +435,8 @@ while True:
         # 0. cancel all open orders since they are most likely not actual anymore
         # 1. check current orders, if order is not executed in ORDER_LIFE_TIME, adjust price
         # TODO: move to separate thread
-        if g_open_orders or start:
-            adjust_open_orders(not start)
+        #if g_open_orders or start:
+        adjust_open_orders(not start)
         # stop loss
         #stop_loss_protection()
         # 2. get MACD advises on start and every MACD_ADVICE_UPDATE_TIME min
