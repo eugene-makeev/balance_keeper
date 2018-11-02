@@ -305,7 +305,7 @@ def is_rate_changed(order):
     if order_book['success']:
         for competitor in order_book['result']:
             print("competitor:", competitor)
-            if competitor['Rate'] != order['Price']:
+            if competitor['Rate'] != order['Limit']:
                 # TODO: ckeck if MIN_COMPETITOR_ORDER_VOLUME is suitable for altcoins
                 if competitor['Quantity'] >= MIN_COMPETITOR_ORDER_VOLUME:
                     return True
