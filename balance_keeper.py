@@ -7,34 +7,16 @@ import hmac, hashlib
 import numpy
 import talib
 
+from defs import *
+from config import *
+from api import *
 from keys import *
 from colors import *
 from logger import *
 from timeframe import *
+from trade import *
 
 #from datetime import datetime
-
-API_URL = 'bittrex.com'
-API_VERSION = 'v1.1'
-
-DEBUG_PRICE_RATE = 1.0
-
-TRADE_HISTORY_SIZE_DAYS = 10
-
-MACD_HIST_ZERO_DRIFT_THRESHOLD = 1.0
-
-ONE_SATOSHI = 0.00000001
-FIVE_SATOSHI = ONE_SATOSHI * 5
-TEN_SATOSHI = ONE_SATOSHI * 10
-MIN_VALUE_50K_SAT = ONE_SATOSHI * 50000
-MIN_TRADE_ALLOWED = MIN_VALUE_50K_SAT
-
-MIN_COMPETITOR_ORDER_VOLUME = 0.007
-ROUND_PRECISION = 4
-
-MACD_ADVICE_UPDATE_TIME = 1 * 60
-
-ORDER_TYPE = 'limit'
 
 
 TRUSTED_MARKETS = [
@@ -51,45 +33,6 @@ macd_advices = {}
 #available = {}
 
 g_open_orders = 0
-
-
-class ScriptError(Exception):
-    pass
-
-def call_api(**kwargs):
-    http_method = kwargs.get('http_method') if kwargs.get('http_method', '') else 'GET'
-    method = kwargs.pop('method')
-    payload = {}
-
-    if kwargs:
-        payload.update(kwargs)
-
-    nonce = str(int(round(time.time())))
-    uri = "https://" + API_URL + "/api/" + API_VERSION + method + '?apikey=' + API_KEY + '&nonce=' + nonce
-    uri += '&' + urllib.parse.urlencode(payload)
-
-    apisign = hmac.new(API_SECRET,
-                       uri.encode(),
-                       hashlib.sha512).hexdigest()
-
-    headers = {"Content-type": "application/x-www-form-urlencoded",
-               "Key": API_KEY,
-               "apisign": apisign}
-
-    conn = http.client.HTTPSConnection(API_URL, timeout=60)
-    conn.request(http_method, uri, {}, headers)
-    response = conn.getresponse().read()
-
-    conn.close()
-
-    try:
-        obj = json.loads(response.decode('utf-8'))
-
-        if 'error' in obj and obj['error']:
-            raise ScriptError(obj['error'])
-        return obj
-    except json.decoder.JSONDecodeError:
-        raise ScriptError('Request failed', response)
 
 
 def pull_historical_data(market, timeframe='hour'):
@@ -196,6 +139,8 @@ def get_macd_advice(chart_data):
     #TODO: analyze time of average price around one value
     #TODO: analyze last candle bull/bear and do not sell/buy accordingly
     
+    # check the current trend
+    
     if abs(macdhist[last_cross]) + abs(macdhist[last_cross + 1]) > MACD_HIST_ZERO_DRIFT_THRESHOLD \
             or abs(macdhist[-1]) > MACD_HIST_ZERO_DRIFT_THRESHOLD:
         if macdhist[last_cross] < 0:
@@ -204,6 +149,7 @@ def get_macd_advice(chart_data):
         else:
             #if macdsignal[-1] < macdsignal[-2] and macd[-1] < macd[-2]:
             advise = 'sell'
+            
     return advise
 
 
@@ -219,128 +165,6 @@ def update_macd_advices():
         else:
             print(CRED, 'invalid market in trusted markets:', market, CEND)
     print('   ', macd_advices)
-
-def cancel_order(uuid, order_type=''):
-    cancel_res = call_api(method="/market/cancel", uuid=uuid)
-    if cancel_res['success']:
-        global g_open_orders
-        g_open_orders -= 1
-        print(CGREEN, "\t\t%s order %s successfully canceled%s" % (order_type, uuid, CEND))
-    else:
-        print(CRED, "\t\t%s order %s cancelation failed (%s)%s" % (order_type, uuid, cancel_res['message'], CEND))    
-    return cancel_res['success']
-
-def get_rate(market, order_type):
-    # try to sell as higher as possible rate, 3 approaches:
-    
-    # 1. current ticker value for 'ask'/'bid'
-    # 2. current ticker value +/- some little amount to be best advise
-    # 3. ticker value 'last' 
-    ticker_data = call_api(method="/public/getticker", market=market)
-    #adjuster = (ticker_data['result']['Ask'] - ticker_data['result']['Bid']) / 100
-    #if adjuster < ONE_SATOSHI:
-    adjuster = ONE_SATOSHI    
-
-    if order_type.lower() == 'sell':
-        rate = float(ticker_data['result']['Ask'] - adjuster)
-    else:
-        rate = float(ticker_data['result']['Bid'] + adjuster)
-   
-    return rate * DEBUG_PRICE_RATE
-
-
-def create_order(order_type, market, quantity, rate=None):
-    method = "/market/" + order_type.lower() + ORDER_TYPE
-    rate = get_rate(market, order_type) if rate == None else rate
-    responce = call_api(method=method, market=market, quantity=quantity, rate=rate)
-    if responce['success']:
-        global g_open_orders
-        g_open_orders += 1        
-        print(CGREEN, "\t\t\tsuccessfyly created %s order for %s, rate: %0.8f, quantity %0.8f uuid=%s%s"
-            % (order_type.upper(), market, rate, quantity, responce['result']['uuid'], CEND))
-    else:
-        print(CRED, "\t\t\tfailed to create %s order: %s%s" % (order_type.upper(), responce['message'], CEND))
-
-def create_buy(market, quantity=0):
-    current_rate = None
-    if not quantity:
-        base = 'USDT' if market.split('-')[0] == 'USDT' else 'BTC'
-        balance = call_api(method='/account/getbalance', currency=base)
-        if balance['result']:
-            base_available = float(balance['result']['Available'])
-
-        if base_available:
-            # TODO: think about order total algorithm (% of overall balance or fixed amount)
-            # currently buy BTC for entire USDT balance
-            # buy altcoin for 2% of entire balance
-            current_rate = get_rate(market, 'buy')
-            quantity = base_available / current_rate
-
-            if market != 'USDT-BTC':
-                # buy altcoin for 2% of available funds or minimum trade allowed
-                if quantity * 0.02 > MIN_TRADE_ALLOWED:
-                    quantity *= 0.02
-                elif quantity > MIN_TRADE_ALLOWED:
-                    quantity = MIN_TRADE_ALLOWED
-
-            # round down
-            adjuster = pow(10, ROUND_PRECISION)
-            quantity = int(quantity * adjuster)
-            quantity = float(quantity / adjuster)
-
-    if quantity >= MIN_TRADE_ALLOWED:
-        create_order("buy", market=market, quantity=quantity, rate=current_rate)
-    else:
-        print(CRED, '\t\tinsuficient funds to create BUY order, %s available: %0.8f%s' % (base, base_available, CEND))
-
-
-def create_sell(market, quantity=0):
-    create_order('sell', market=market, quantity=quantity)
-        
-
-def is_rate_changed(order):
-    order_type = order["OrderType"].lower().split('_')[-1]
-    # check competitor order validity
-    order_book = call_api(method="/public/getorderbook", market=order['Exchange'], type=order_type)
-    if order_book['success']:
-        for competitor in order_book['result']:
-            if competitor['Rate'] != order['Limit']:
-                # TODO: ckeck if MIN_COMPETITOR_ORDER_VOLUME is suitable for altcoins
-                if competitor['Quantity'] >= MIN_COMPETITOR_ORDER_VOLUME:
-                    return True
-            else:
-                return False
-    else:
-        print('failed to get order book data')
-        
-    return False
-                
-
-def adjust_open_orders(create_new=True):
-    print('''
-    ///////////////////////////////////////////////////////////////////////////////////
-    //                            ADJUST OPEN ORDERS
-    ///////////////////////////////////////////////////////////////////////////////////
-    ''')
-    orders = call_api(method='/market/getopenorders')
-    if orders['success']:
-        global g_open_orders
-        g_open_orders = len(orders['result'])
-        print('\tOpen orders:', g_open_orders)
-        for order in orders['result']:
-            opened = get_time_from_str(order['Opened'])
-            print('\t%s %s, quantity: %0.8f, created: %s' % (order["OrderType"], order['Exchange'],
-                                                             order['QuantityRemaining'], opened))
-            if is_rate_changed(order):
-                order_type = order["OrderType"].split('_')[-1]
-                if cancel_order(order['OrderUuid'], order_type) and create_new:
-                    quantity = order['QuantityRemaining']
-                    if order_type == 'SELL':
-                        create_sell(order['Exchange'], quantity)
-                    else:
-                        create_buy(order['Exchange'], quantity)
-    else:
-        print(CRED, "failed to get open orders:", orders['message'], CEND)
 
 
 def stop_loss_protection():
