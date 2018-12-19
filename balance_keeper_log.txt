@@ -1,0 +1,6 @@
+GMT 2018-11-02 10:55:12: ('different kinds of prints: ', 'test', {'Key': 'value'})
+GMT 2018-11-02 10:55:12: ('testdifferent kinds of prints: ', {'Key': 'value'})
+GMT 2018-11-02 10:55:12: ('testdifferent kinds of prints: ', {'Key': 'value'})
+GMT 2018-11-02 10:55:40: ('different kinds of prints: ', 'test', {'Key': 'value'})
+GMT 2018-11-02 10:55:40: ('testdifferent kinds of prints: ', {'Key': 'value'})
+GMT 2018-11-02 10:55:40: ('test', 'different kinds of prints: ', {'Key': 'value'})
