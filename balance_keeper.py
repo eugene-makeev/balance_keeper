@@ -15,6 +15,7 @@ from colors import *
 from logger import *
 from timeframe import *
 from trade import *
+from numpy import False_
 
 #from datetime import datetime
 
@@ -32,7 +33,7 @@ chart_data = {}
 macd_advices = {}
 #available = {}
 
-g_open_orders = 0
+#g_open_orders = 0
 
 
 def pull_historical_data(market, timeframe='hour'):
@@ -260,7 +261,7 @@ while True:
         # 1. check current orders, if order is not executed in ORDER_LIFE_TIME, adjust price
         # TODO: move to separate thread
         #if g_open_orders or start:
-        adjust_open_orders(not start)
+        open_orders = adjust_open_orders(not start)
         # stop loss
         #stop_loss_protection()
         # 2. get MACD advises on start and every MACD_ADVICE_UPDATE_TIME min
@@ -277,7 +278,7 @@ while True:
                 make_balances()
 
         start = False
-        if g_open_orders:
+        if open_orders == True:
             time.sleep(1)
         else:
             time.sleep(5)

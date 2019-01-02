@@ -4,6 +4,11 @@ import requests
 import urllib, http.client
 import hmac, hashlib
 
+from colors import *
+from defs import *
+from config import *
+from keys import *
+
 API_URL = 'bittrex.com'
 API_VERSION = 'v1.1'
 
@@ -50,11 +55,10 @@ def call_api(**kwargs):
 def cancel_order(uuid, order_type=''):
     cancel_res = call_api(method="/market/cancel", uuid=uuid)
     if cancel_res['success']:
-        global g_open_orders
-        g_open_orders -= 1
         print(CGREEN, "\t\t%s order %s successfully canceled%s" % (order_type, uuid, CEND))
     else:
-        print(CRED, "\t\t%s order %s cancelation failed (%s)%s" % (order_type, uuid, cancel_res['message'], CEND))    
+        print(CRED, "\t\t%s order %s cancelation failed (%s)%s" % (order_type, uuid, cancel_res['message'], CEND))
+        
     return cancel_res['success']
 
 def get_rate(market, order_type):
@@ -77,16 +81,16 @@ def get_rate(market, order_type):
 
 
 def create_order(order_type, market, quantity, rate=None):
-    method = "/market/" + order_type.lower() + ORDER_TYPE
+    method = "/market/" + order_type.lower() + ORDERS_TYPE
     rate = get_rate(market, order_type) if rate == None else rate
     responce = call_api(method=method, market=market, quantity=quantity, rate=rate)
-    if responce['success']:
-        global g_open_orders
-        g_open_orders += 1        
+    if responce['success']:        
         print(CGREEN, "\t\t\tsuccessfyly created %s order for %s, rate: %0.8f, quantity %0.8f uuid=%s%s"
             % (order_type.upper(), market, rate, quantity, responce['result']['uuid'], CEND))
     else:
         print(CRED, "\t\t\tfailed to create %s order: %s%s" % (order_type.upper(), responce['message'], CEND))
+    
+    return responce['success']
 
 def create_buy(market, quantity=0):
     current_rate = None
@@ -123,20 +127,3 @@ def create_buy(market, quantity=0):
 
 def create_sell(market, quantity=0):
     create_order('sell', market=market, quantity=quantity)
-
-def is_rate_changed(order):
-    order_type = order["OrderType"].lower().split('_')[-1]
-    # check competitor order validity
-    order_book = call_api(method="/public/getorderbook", market=order['Exchange'], type=order_type)
-    if order_book['success']:
-        for competitor in order_book['result']:
-            if competitor['Rate'] != order['Limit']:
-                # TODO: ckeck if MIN_COMPETITOR_ORDER_VOLUME is suitable for altcoins
-                if competitor['Quantity'] >= MIN_COMPETITOR_ORDER_VOLUME:
-                    return True
-            else:
-                return False
-    else:
-        print('failed to get order book data')
-        
-    return False
